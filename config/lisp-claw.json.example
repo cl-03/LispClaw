@@ -1,0 +1,52 @@
+{
+  "agent": {
+    "model": "anthropic/claude-opus-4-6",
+    "thinkingLevel": "medium",
+    "providers": {
+      "anthropic": {
+        "apiKey": null,
+        "baseUrl": "https://api.anthropic.com"
+      },
+      "openai": {
+        "apiKey": null,
+        "baseUrl": "https://api.openai.com/v1"
+      },
+      "ollama": {
+        "baseUrl": "http://127.0.0.1:11434"
+      }
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "bind": "0.0.0.0",
+    "auth": {
+      "mode": "token",
+      "token": null
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": false,
+      "botToken": null
+    },
+    "discord": {
+      "enabled": false,
+      "token": null
+    },
+    "slack": {
+      "enabled": false,
+      "token": null
+    },
+    "whatsapp": {
+      "enabled": false
+    }
+  },
+  "logging": {
+    "level": "info",
+    "file": "/home/lisp-claw/.lisp-claw/lisp-claw.log"
+  },
+  "health": {
+    "checkInterval": 30,
+    "reportInterval": 60
+  }
+}

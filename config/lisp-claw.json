@@ -1,0 +1,52 @@
+{
+  "agent": {
+    "model": "anthropic/claude-opus-4-6",
+    "thinkingLevel": "medium",
+    "verboseLevel": "normal",
+    "workspace": "~/.lisp-claw/workspace"
+  },
+  "gateway": {
+    "port": 18789,
+    "bind": "127.0.0.1",
+    "auth": {
+      "mode": "token",
+      "token": null,
+      "allowTailscale": true
+    },
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": false
+    }
+  },
+  "channels": {
+    "whatsapp": {
+      "enabled": false,
+      "allowFrom": []
+    },
+    "telegram": {
+      "enabled": false,
+      "botToken": null,
+      "allowFrom": []
+    },
+    "discord": {
+      "enabled": false,
+      "token": null,
+      "dmPolicy": "pairing"
+    },
+    "slack": {
+      "enabled": false,
+      "botToken": null,
+      "appToken": null
+    }
+  },
+  "browser": {
+    "enabled": false,
+    "profile": null,
+    "color": "#FF4500"
+  },
+  "logging": {
+    "level": "info",
+    "file": null,
+    "pattern": "[%-5p %d{HH:mm:ss}] %m%n"
+  }
+}

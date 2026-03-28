@@ -1,0 +1,59 @@
+services:
+  lisp-claw-gateway:
+    image: ${LISP_CLAW_IMAGE:-lisp-claw:local}
+    environment:
+      HOME: /home/lisp-claw
+      TERM: xterm-256color
+      LISP_CLAW_GATEWAY_TOKEN: ${LISP_CLAW_GATEWAY_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      TZ: ${LISP_CLAW_TZ:-UTC}
+    volumes:
+      - ${LISP_CLAW_CONFIG_DIR:-~/.lisp-claw}:/home/lisp-claw/.lisp-claw
+      - ${LISP_CLAW_WORKSPACE_DIR:-~/.lisp-claw/workspace}:/home/lisp-claw/workspace
+    ports:
+      - "${LISP_CLAW_GATEWAY_PORT:-18789}:18789"
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18789/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    # Optional: Resource limits
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 1G
+    #     reservations:
+    #       memory: 512M
+    # Optional: Logging configuration
+    # logging:
+    #   driver: "json-file"
+    #   options:
+    #     max-size: "10m"
+    #     max-file: "3"
+
+  lisp-claw-repl:
+    image: ${LISP_CLAW_IMAGE:-lisp-claw:local}
+    network_mode: "service:lisp-claw-gateway"
+    environment:
+      HOME: /home/lisp-claw
+      TERM: xterm-256color
+      LISP_CLAW_GATEWAY_TOKEN: ${LISP_CLAW_GATEWAY_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      TZ: ${LISP_CLAW_TZ:-UTC}
+    volumes:
+      - ${LISP_CLAW_CONFIG_DIR:-~/.lisp-claw}:/home/lisp-claw/.lisp-claw
+      - ${LISP_CLAW_WORKSPACE_DIR:-~/.lisp-claw/workspace}:/home/lisp-claw/workspace
+    stdin_open: true
+    tty: true
+    init: true
+    entrypoint: ["sbcl", "--load", "/home/lisp-claw/quicklisp/setup.lisp"]
+    depends_on:
+      - lisp-claw-gateway
+    # Optional: Profile for development
+    # profiles:
+    #   - dev

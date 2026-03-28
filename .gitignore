@@ -1,0 +1,90 @@
+# Common Lisp artifacts
+*.fasl
+*.fasb
+*.lib
+*.x86f
+*.amd64f
+*.sparcf
+*.sparc64f
+*.hpf
+*.hp64f
+*.linuxf
+*.linuxamd64f
+*.darwinf
+*.darwinx86f
+*.darwinamd64f
+*.sunosf
+*.win32f
+*.win64f
+*.w64bat
+*.ufsl
+*.fsl
+*.nfasl
+*.abcl
+*.jarr
+*.jar
+*.clfasl
+*.bundle
+*.image
+*.core
+
+# Quicklisp
+quicklisp/
+
+# ASDF
+asdf.conf
+
+# Logs
+*.log
+logs/
+
+# Config (keep example, ignore actual config)
+# But keep the example
+!config/lisp-claw.json.example
+
+# Runtime
+.lisp-claw/
+state/
+data/
+cache/
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+target/
+
+# Test artifacts
+.coverage/
+test-results/
+
+# Documentation build
+docs/_build/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Docker
+.dockerignore
+docker-compose.extra.yml
+docker-compose.sandbox.yml
+
+# Environment
+.env
+.env.local
+
+# Shell scripts (keep templates)
+!scripts/*.sh
