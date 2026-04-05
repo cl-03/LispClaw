@@ -98,7 +98,9 @@
        (:file "android")
        (:file "whatsapp")
        (:file "email")
-       (:file "wechat")))
+       (:file "wechat")
+       (:file "instant-messaging")
+       (:file "im-web")))
      (:module "web"
       :serial t
       :pathname "web/"

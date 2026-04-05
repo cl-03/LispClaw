@@ -54,7 +54,9 @@
         #:lisp-claw.channels.wechat
         #:lisp-claw.automation.task-queue
         #:lisp-claw.automation.event-bus
-        #:lisp-claw.agent.providers.azure-openai)
+        #:lisp-claw.agent.providers.azure-openai
+        #:lisp-claw.instant-messaging
+        #:lisp-claw.im.web)
   (:shadow #:restart)
   (:shadowing-import-from #:alexandria #:ensure-list)
   (:shadowing-import-from #:lisp-claw.utils.helpers #:ensure-list)
@@ -221,6 +223,12 @@
 
   ;; Initialize event bus system
   (initialize-event-bus-system :name "lisp-claw" :async-workers 4)
+
+  ;; Initialize instant messaging system
+  (initialize-im-system :port 18790)
+
+  ;; Initialize IM web interface
+  (start-im-web :port 18791)
 
   ;; Initialize Android channel
   ;; (initialize-android-channel ...)
