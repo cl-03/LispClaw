@@ -1,0 +1,505 @@
+# Kubernetes Deployment for Lisp-Claw
+# Complete K8s manifests for production deployment
+
+# ==============================================================================
+# Namespace
+# ==============================================================================
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lisp-claw
+  labels:
+    name: lisp-claw
+    app.kubernetes.io/part-of: lisp-claw
+
+# ==============================================================================
+# ConfigMap - Configuration
+# ==============================================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lisp-claw-config
+  namespace: lisp-claw
+  labels:
+    app.kubernetes.io/name: lisp-claw
+    app.kubernetes.io/component: gateway
+data:
+  LISP_CLAW_CONFIG: "/app/config/config.json"
+  LISP_CLAW_LOG_LEVEL: "info"
+  LISP_CLAW_DATA_DIR: "/app/data"
+  LISP_CLAW_TZ: "UTC"
+  # Feature flags
+  LISP_CLAW_ENABLE_VECTOR_SEARCH: "true"
+  LISP_CLAW_ENABLE_MCP: "true"
+  LISP_CLAW_ENABLE_SKILLS: "true"
+
+# ==============================================================================
+# ConfigMap - Gateway Configuration
+# ==============================================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lisp-claw-gateway-config
+  namespace: lisp-claw
+  labels:
+    app.kubernetes.io/name: lisp-claw
+    app.kubernetes.io/component: gateway
+data:
+  config.json: |
+    {
+      "gateway": {
+        "port": "18789",
+        "bind": "0.0.0.0",
+        "max_connections": 1000,
+        "timeout": 300
+      },
+      "logging": {
+        "level": "info",
+        "format": "json",
+        "file": "/app/logs/lisp-claw.log"
+      },
+      "agent": {
+        "default_provider": "anthropic",
+        "max_tokens": 4096,
+        "temperature": 0.7
+      },
+      "memory": {
+        "type": "hybrid",
+        "max_short_term": 100,
+        "max_long_term": 1000
+      },
+      "vector": {
+        "enabled": true,
+        "store": "chromadb",
+        "embedding_model": "text-embedding-ada-002"
+      },
+      "security": {
+        "rate_limit": {
+          "enabled": true,
+          "requests_per_minute": 60
+        },
+        "audit": {
+          "enabled": true,
+          "retention_days": 90
+        }
+      }
+    }
+
+# ==============================================================================
+# Secret - API Keys and Credentials
+# ==============================================================================
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: lisp-claw-secrets
+  namespace: lisp-claw
+  labels:
+    app.kubernetes.io/name: lisp-claw
+    app.kubernetes.io/component: gateway
+type: Opaque
+stringData:
+  ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"  # Replace with actual key or use external secrets
+  OPENAI_API_KEY: "${OPENAI_API_KEY}"
+  LISP_CLAW_GATEWAY_TOKEN: "${LISP_CLAW_GATEWAY_TOKEN}"
+  # Database credentials (if using PostgreSQL)
+  DATABASE_URL: "postgresql://lisp-claw:password@postgres:5432/lisp-claw"
+  # Redis password
+  REDIS_PASSWORD: "${REDIS_PASSWORD}"
+
+# ==============================================================================
+# Persistent Volume Claims
+# ==============================================================================
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lisp-claw-data-pvc
+  namespace: lisp-claw
+  labels:
+    app.kubernetes.io/name: lisp-claw
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lisp-claw-logs-pvc
+  namespace: lisp-claw
+  labels:
+    app.kubernetes.io/name: lisp-claw
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lisp-claw-vectors-pvc
+  namespace: lisp-claw
+  labels:
+    app.kubernetes.io/name: lisp-claw
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: standard
+
+# ==============================================================================
+# Deployment
+# ==============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lisp-claw-gateway
+  namespace: lisp-claw
+  labels:
+    app.kubernetes.io/name: lisp-claw
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/version: "0.5.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: lisp-claw
+      app.kubernetes.io/component: gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: lisp-claw
+        app.kubernetes.io/component: gateway
+      annotations:
+        checksum/config: |
+          {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: |
+          {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: lisp-claw-gateway
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: lisp-claw
+          image: lisp-claw:latest
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: gateway
+              containerPort: 18789
+              protocol: TCP
+            - name: control-ui
+              containerPort: 18790
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: lisp-claw-config
+            - secretRef:
+                name: lisp-claw-secrets
+          volumeMounts:
+            - name: config-volume
+              mountPath: /app/config
+              readOnly: true
+            - name: data-volume
+              mountPath: /app/data
+            - name: logs-volume
+              mountPath: /app/logs
+            - name: vectors-volume
+              mountPath: /app/vector-store
+            - name: plugins-volume
+              mountPath: /app/plugins
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: gateway
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: gateway
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health
+              port: gateway
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+      volumes:
+        - name: config-volume
+          configMap:
+            name: lisp-claw-gateway-config
+        - name: data-volume
+          persistentVolumeClaim:
+            claimName: lisp-claw-data-pvc
+        - name: logs-volume
+          persistentVolumeClaim:
+            claimName: lisp-claw-logs-pvc
+        - name: vectors-volume
+          persistentVolumeClaim:
+            claimName: lisp-claw-vectors-pvc
+        - name: plugins-volume
+          emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values:
+                        - lisp-claw
+                topologyKey: kubernetes.io/hostname
+      terminationGracePeriodSeconds: 60
+
+# ==============================================================================
+# Horizontal Pod Autoscaler
+# ==============================================================================
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: lisp-claw-gateway-hpa
+  namespace: lisp-claw
+  labels:
+    app.kubernetes.io/name: lisp-claw
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: lisp-claw-gateway
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "100"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 4
+          periodSeconds: 60
+      selectPolicy: Max
+
+# ==============================================================================
+# Service
+# ==============================================================================
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lisp-claw-gateway
+  namespace: lisp-claw
+  labels:
+    app.kubernetes.io/name: lisp-claw
+    app.kubernetes.io/component: gateway
+spec:
+  type: ClusterIP
+  ports:
+    - name: gateway
+      port: 18789
+      targetPort: gateway
+      protocol: TCP
+    - name: control-ui
+      port: 18790
+      targetPort: control-ui
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: lisp-claw
+    app.kubernetes.io/component: gateway
+
+# ==============================================================================
+# Ingress
+# ==============================================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lisp-claw-ingress
+  namespace: lisp-claw
+  labels:
+    app.kubernetes.io/name: lisp-claw
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/websocket-services: "lisp-claw-gateway"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - lisp-claw.example.com
+      secretName: lisp-claw-tls
+  rules:
+    - host: lisp-claw.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: lisp-claw-gateway
+                port:
+                  number: 18789
+          - path: /ui
+            pathType: Prefix
+            backend:
+              service:
+                name: lisp-claw-gateway
+                port:
+                  number: 18790
+
+# ==============================================================================
+# Service Account
+# ==============================================================================
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lisp-claw-gateway
+  namespace: lisp-claw
+  labels:
+    app.kubernetes.io/name: lisp-claw
+
+# ==============================================================================
+# Pod Disruption Budget
+# ==============================================================================
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: lisp-claw-gateway-pdb
+  namespace: lisp-claw
+  labels:
+    app.kubernetes.io/name: lisp-claw
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: lisp-claw
+      app.kubernetes.io/component: gateway
+
+# ==============================================================================
+# Network Policy
+# ==============================================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lisp-claw-network-policy
+  namespace: lisp-claw
+  labels:
+    app.kubernetes.io/name: lisp-claw
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: lisp-claw
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 18789
+        - protocol: TCP
+          port: 18790
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 18789
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: chromadb
+      ports:
+        - protocol: TCP
+          port: 8000

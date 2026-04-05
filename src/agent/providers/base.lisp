@@ -22,33 +22,11 @@
 ;;; ============================================================================
 
 (defgeneric provider-call (provider model messages &key options)
-  "Make a non-streaming call to a provider.
-
-  Args:
-    PROVIDER: Provider identifier
-    MODEL: Model name
-    MESSAGES: List of messages
-    OPTIONS: Additional options
-
-  Returns:
-    Provider response"
   (:method (provider model messages &key options)
     (declare (ignore provider model messages options))
     (error 'provider-unsupported :operation 'provider-call)))
 
 (defgeneric provider-stream (provider model messages &key options on-chunk on-complete)
-  "Make a streaming call to a provider.
-
-  Args:
-    PROVIDER: Provider identifier
-    MODEL: Model name
-    MESSAGES: List of messages
-    OPTIONS: Additional options
-    ON-CHUNK: Callback for each chunk
-    ON-COMPLETE: Callback when complete
-
-  Returns:
-    NIL (results via callbacks)"
   (:method (provider model messages &key options on-chunk on-complete)
     (declare (ignore provider model messages options on-chunk on-complete))
     (error 'provider-unsupported :operation 'provider-stream)))

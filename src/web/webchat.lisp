@@ -367,7 +367,11 @@
          (opcode (logand #b1111 byte1))
          (mask-p (logbitp 7 byte2))
          (payload-len (logand #b1111111 byte2))
-         (mask-key (if mask-p (read-sequence 4 stream) nil))
+         (mask-key (if mask-p
+                       (let ((buf (make-array 4 :element-type '(unsigned-byte 8))))
+                         (read-sequence buf stream)
+                         buf)
+                       nil))
          (actual-len (cond
                        ((= payload-len 126)
                         (let ((b1 (read-byte stream))
@@ -379,8 +383,9 @@
                             (setf len (+ (* len 256) (read-byte stream))))
                           len))
                        (t payload-len)))
-         (data (read-sequence actual-len stream))))
-
+         (data (let ((buf (make-array actual-len :element-type '(unsigned-byte 8))))
+                 (read-sequence buf stream)
+                 buf)))
     ;; Unmask
     (when mask-p
       (dotimes (i (length data))
@@ -486,9 +491,9 @@
 
   Returns:
     Client ID string"
-  (format nil "webchat-~A-~A"
+  (format nil "webchat-~A-~X"
           (get-universal-time)
-          (uuid:make-uuid :random)))
+          (random most-positive-fixnum)))
 
 (defun register-webchat-client (client-id)
   "Register a webchat client.

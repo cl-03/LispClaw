@@ -5,9 +5,7 @@
 
 (defpackage #:lisp-claw.utils.helpers
   (:nicknames #:lc.utils.helpers)
-  (:use #:cl
-        #:alexandria
-        #:serapeum)
+  (:use #:cl)
   (:export
    ;; Time utilities
    #:now
@@ -22,6 +20,7 @@
    #:non-empty-string-p
    #:truncate-string
    #:safe-subseq
+   #:keywordize
 
    ;; Sequence utilities
    #:safe-first
@@ -204,6 +203,18 @@
           (subseq sequence start))
     (error () nil)))
 
+(defun keywordize (string)
+  "Convert a string to a keyword.
+
+  Args:
+    STRING: String to convert
+
+  Returns:
+    Keyword symbol"
+  (if (keywordp string)
+      string
+      (intern (string-upcase string) :keyword)))
+
 ;;; ============================================================================
 ;;; Sequence Utilities
 ;;; ============================================================================
@@ -265,8 +276,7 @@
   Returns:
     The directory pathname"
   (let ((dir (if (pathnamep path) path (pathname path))))
-    (uiop:ensure-directory-pathname dir)
-    (uiop:ensure-directories-exist dir)
+    (ensure-directories-exist dir)
     dir))
 
 (defun file-exists-p (path)
@@ -301,7 +311,11 @@
   Returns:
     NIL"
   (ensure-directory (directory-namestring path))
-  (uiop:write-string-file contents path :external-format external-format))
+  (with-open-file (stream path :direction :output
+                          :if-exists :supersede
+                          :if-does-not-exist :create
+                          :external-format external-format)
+    (write-string contents stream)))
 
 ;;; ============================================================================
 ;;; Error Handling

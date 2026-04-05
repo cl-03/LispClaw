@@ -8,10 +8,10 @@
   (:use #:cl
         #:alexandria
         #:bordeaux-threads
-        #:dexador
         #:lisp-claw.utils.logging
         #:lisp-claw.utils.json
         #:lisp-claw.channels.base)
+  (:shadowing-import-from #:dexador #:request #:post #:get)
   (:export
    #:telegram-channel
    #:make-telegram-channel
@@ -128,17 +128,6 @@
 
 (defmethod channel-send-message ((channel telegram-channel) recipient message
                                  &key (parse-mode "HTML") reply-to)
-  "Send a message via Telegram.
-
-  Args:
-    CHANNEL: Telegram channel instance
-    RECIPIENT: Chat ID or username
-    MESSAGE: Message text
-    PARSE-MODE: Parse mode (HTML, Markdown, etc.)
-    REPLY-TO: Message ID to reply to
-
-  Returns:
-    T on success"
   (handler-case
       (let* ((params `(("chat_id" . ,recipient)
                        ("text" . ,message)))
@@ -159,16 +148,6 @@
 
 (defmethod channel-send-photo ((channel telegram-channel) recipient photo
                                &key caption)
-  "Send a photo via Telegram.
-
-  Args:
-    CHANNEL: Telegram channel instance
-    RECIPIENT: Chat ID
-    PHOTO: Photo URL or file ID
-    CAPTION: Optional caption
-
-  Returns:
-    T on success"
   (let ((params `(("chat_id" . ,recipient)
                   ("photo" . ,photo))))
     (when caption
@@ -178,16 +157,6 @@
 
 (defmethod channel-send-document ((channel telegram-channel) recipient document
                                   &key caption)
-  "Send a document via Telegram.
-
-  Args:
-    CHANNEL: Telegram channel instance
-    RECIPIENT: Chat ID
-    DOCUMENT: Document URL or file ID
-    CAPTION: Optional caption
-
-  Returns:
-    T on success"
   (let ((params `(("chat_id" . ,recipient)
                   ("document" . ,document))))
     (when caption
@@ -200,35 +169,19 @@
 ;;; ============================================================================
 
 (defmethod channel-get-members ((channel telegram-channel) chat-id)
-  "Get members of a Telegram group or channel.
-
-  Args:
-    CHANNEL: Telegram channel instance
-    CHAT-ID: Chat ID
-
-  Returns:
-    List of member alists"
   (handler-case
       (let ((result (telegram-api-request channel "getChatAdministrators"
                                           `(("chat_id" . ,chat-id)))))
         (when result
           (let ((members nil))
-            (do-vector (member result)
-              (push (parse-telegram-user member) members))
+            (loop for i below (length result)
+                  do (push (parse-telegram-user (aref result i)) members))
             members)))
     (error (e)
       (log-error "Failed to get Telegram members: ~A" e)
       nil)))
 
 (defmethod channel-get-chat-info ((channel telegram-channel) chat-id)
-  "Get information about a Telegram chat.
-
-  Args:
-    CHANNEL: Telegram channel instance
-    CHAT-ID: Chat ID
-
-  Returns:
-    Chat info alist"
   (handler-case
       (let ((result (telegram-api-request channel "getChat"
                                           `(("chat_id" . ,chat-id)))))
@@ -329,11 +282,12 @@
                (updates (telegram-api-request channel "getUpdates" params)))
 
           (when updates
-            (do-vector (update updates)
-              (process-telegram-update channel update)
-              ;; Update offset
-              (setf (telegram-offset channel)
-                    (1+ (gethash "update_id" update))))))
+            (loop for i below (length updates)
+                  do (let ((update (aref updates i)))
+                       (process-telegram-update channel update)
+                       ;; Update offset
+                       (setf (telegram-offset channel)
+                             (1+ (gethash "update_id" update)))))))
 
       (error (e)
         (log-error "Telegram polling error: ~A" e)

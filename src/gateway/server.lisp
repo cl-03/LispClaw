@@ -7,7 +7,6 @@
 (defpackage #:lisp-claw.gateway.server
   (:nicknames #:lc.gateway.server)
   (:use #:cl
-        #:alexandria
         #:bordeaux-threads
         #:lisp-claw.utils.logging
         #:lisp-claw.utils.helpers
@@ -22,6 +21,7 @@
    #:make-gateway
    #:start-gateway
    #:stop-gateway
+   #:restart-gateway
    #:gateway-running-p
    #:handle-client
    #:handle-websocket-message
@@ -216,37 +216,35 @@
             (bind (gateway-bind gateway)))
         (log-info "Starting WebSocket server on ~A:~A" bind port)
 
-        ;; Create acceptor with WebSocket support
+        ;; Set up dispatch table for request routing
+        (setf hunchentoot:*dispatch-table*
+              (list
+               ;; Health check endpoint
+               (lambda ()
+                 (when (string= (hunchentoot:request-uri*) "/health")
+                   #'handle-health-request))
+               ;; Healthz endpoint for Docker
+               (lambda ()
+                 (when (string= (hunchentoot:request-uri*) "/healthz")
+                   #'handle-healthz-request))
+               ;; Readyz endpoint for Docker
+               (lambda ()
+                 (when (string= (hunchentoot:request-uri*) "/readyz")
+                   #'handle-readyz-request))
+               ;; WebSocket upgrade
+               (lambda ()
+                 (when (string= (hunchentoot:request-uri*) "/")
+                   #'handle-websocket-connection))
+               ;; Control UI
+               (lambda ()
+                 (when (string-prefix-p "/__openclaw__/" (hunchentoot:request-uri*))
+                   #'handle-control-ui-request))))
+
+        ;; Create and start acceptor
         (let ((acceptor (make-instance 'hunchentoot:easy-acceptor
                                        :port port
                                        :address bind)))
           (setf *websocket-acceptor* acceptor)
-
-          ;; Define request dispatcher
-          (setf (hunchentoot:dispatcher acceptor)
-                (lambda (request)
-                  (declare (ignore request))
-                  (let ((uri (hunchentoot:request-uri)))
-                    (cond
-                      ;; Health check endpoint
-                      ((string= uri "/health")
-                       #'handle-health-request)
-                      ;; Healthz endpoint for Docker
-                      ((string= uri "/healthz")
-                       #'handle-healthz-request)
-                      ;; Readyz endpoint for Docker
-                      ((string= uri "/readyz")
-                       #'handle-readyz-request)
-                      ;; WebSocket upgrade
-                      ((string= uri "/")
-                       #'handle-websocket-connection)
-                      ;; Control UI
-                      ((string-prefix-p "/__openclaw__/" uri)
-                       #'handle-control-ui-request)
-                      ;; Default 404
-                      (t
-                       #'handle-not-found))))))
-
           (hunchentoot:start acceptor)
           (log-info "WebSocket server started")
 
@@ -413,7 +411,11 @@
          (opcode (logand #b1111 byte1))
          (mask-p (logbitp 7 byte2))
          (payload-len (logand #b1111111 byte2))
-         (mask-key (if mask-p (read-sequence 4 stream) nil))
+         (mask-key (if mask-p
+                       (let ((key (make-array 4 :element-type '(unsigned-byte 8))))
+                         (read-sequence key stream)
+                         key)
+                       nil))
          (actual-len (cond
                        ((= payload-len 126)
                         (let ((b1 (read-byte stream))
@@ -425,7 +427,8 @@
                             (setf len (+ (* len 256) (read-byte stream))))
                           len))
                        (t payload-len)))
-         (data (read-sequence actual-len stream)))
+         (data (make-array actual-len :element-type '(unsigned-byte 8))))
+    (read-sequence data stream)
 
     ;; Unmask data if masked
     (when mask-p
@@ -434,18 +437,19 @@
 
     ;; Process based on opcode
     (case opcode
-      (#x1) ; Text frame
-      (babel:octets-to-string data :encoding :utf-8)
-      (#x2) ; Binary frame
-      data
-      (#x8) ; Close frame
-      (close-websocket-connection stream)
-      (#x9) ; Ping frame
-      (send-websocket-pong stream data)
-      (#xA) ; Pong frame
-      nil
+      (#x1 ; Text frame
+       (babel:octets-to-string data :encoding :utf-8))
+      (#x2 ; Binary frame
+       data)
+      (#x8 ; Close frame
+       (close-websocket-connection stream))
+      (#x9 ; Ping frame
+       (send-websocket-pong stream data))
+      (#xA ; Pong frame
+       nil)
       (otherwise
-       (log-warn "Unknown WebSocket opcode: ~A" opcode)))))
+       (log-warn "Unknown WebSocket opcode: ~A" opcode)
+       nil))))
 
 (defun send-websocket-pong (stream data)
   "Send WebSocket pong response.
@@ -500,7 +504,7 @@
     Client ID string"
   (format nil "client-~A-~A"
           (get-universal-time)
-          (uuid:make-uuid :random)))
+          (uuid:make-v4-uuid)))
 
 (defun register-websocket-client (client-id)
   "Register a WebSocket client.

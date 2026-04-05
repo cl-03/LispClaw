@@ -8,18 +8,37 @@
   (:use #:cl
         #:alexandria
         #:serapeum
-        #:bordeaux-threads)
+        #:bordeaux-threads
+        #:lisp-claw.utils.logging)
   (:export
+   ;; Node class
    #:node
    #:make-node
    #:node-id
    #:node-type
+   #:node-name
    #:node-connected-p
    #:node-register
    #:node-unregister
    #:node-find
+   #:node-list
    #:node-invoke
-   #:*node-manager*))
+   ;; Node manager
+   #:*node-manager*
+   #:make-node-manager
+   #:ensure-node-manager
+   ;; Node discovery
+   #:node-discover
+   #:node-broadcast-presence
+   ;; Task distribution
+   #:node-distribute-task
+   #:node-get-task-result
+   ;; Leader election
+   #:node-elect-leader
+   #:node-get-leader
+   ;; Initialization
+   #:initialize-nodes-system
+   #:start-local-node))
 
 (in-package #:lisp-claw.nodes.manager)
 
@@ -58,7 +77,7 @@
              :documentation "Node metadata")
    (last-seen :initform nil
               :accessor node-last-seen
-              :documentation "Last seen timestamp"))
+              :documentation "Last seen timestamp")))
 
 (defmethod print-object ((node node) stream)
   (print-unreadable-object (node stream :type t)
@@ -294,3 +313,130 @@
     Node manager instance"
   (setf *node-manager* (make-node-manager))
   (log:info "Node manager initialized"))
+
+;;; ============================================================================
+;;; Node Discovery (OpenClaw-style)
+;;; ============================================================================
+
+(defun node-discover (&key (timeout 5))
+  "Discover nodes on the local network.
+
+  Args:
+    TIMEOUT: Discovery timeout in seconds
+
+  Returns:
+    List of discovered nodes"
+  (declare (ignore timeout))
+  ;; Placeholder for UDP broadcast discovery
+  ;; In full implementation:
+  ;; 1. Send UDP broadcast to discovery port
+  ;; 2. Listen for responses
+  ;; 3. Register responding nodes
+  (log-info "Discovering nodes on network...")
+  (node-list))
+
+(defun node-broadcast-presence ()
+  "Broadcast local node presence.
+
+  Returns:
+    T"
+  ;; Placeholder for UDP broadcast
+  (log-debug "Broadcasting node presence")
+  t)
+
+;;; ============================================================================
+;;; Task Distribution
+;;; ============================================================================
+
+(defvar *task-registry* (make-hash-table :test 'equal)
+  "Registry of distributed tasks.")
+
+(defun node-distribute-task (task &key target-node priority)
+  "Distribute a task to a node.
+
+  Args:
+    TASK: Task to execute
+    TARGET-NODE: Optional specific node ID
+    PRIORITY: Task priority (0-10)
+
+  Returns:
+    Task ID"
+  (let* ((task-id (format nil "task-~A-~A" (get-universal-time) (random 1000000)))
+         (node (if target-node
+                   (node-find target-node)
+                   ;; Select first available node
+                   (car (node-list)))))
+    (if node
+        (progn
+          (setf (gethash task-id *task-registry*)
+                `(:id ,task-id
+                  :node ,(node-id node)
+                  :task ,task
+                  :status :pending
+                  :created ,(get-universal-time)
+                  :priority ,(or priority 5)))
+          (log-info "Distributed task ~A to node ~A" task-id (node-id node))
+          task-id)
+        (progn
+          (log-error "No available nodes for task distribution")
+          nil))))
+
+(defun node-get-task-result (task-id)
+  "Get result of a distributed task.
+
+  Args:
+    TASK-ID: Task identifier
+
+  Returns:
+    Task result plist or NIL"
+  (gethash task-id *task-registry*))
+
+;;; ============================================================================
+;;; Leader Election
+;;; ============================================================================
+
+(defun node-elect-leader ()
+  "Elect a leader node from available nodes.
+
+  Returns:
+    Leader node or NIL"
+  (let* ((nodes (node-list))
+         (leader (when nodes
+                   ;; Simple election: node with lexicographically smallest ID
+                   (reduce (lambda (a b)
+                             (if (string< (node-id a) (node-id b)) a b))
+                           nodes))))
+    (when leader
+      (log-info "Elected leader node: ~A" (node-id leader)))
+    leader))
+
+(defun node-get-leader ()
+  "Get the current leader node.
+
+  Returns:
+    Leader node or NIL"
+  ;; In a full implementation, this would track leader state
+  (node-elect-leader))
+
+;;; ============================================================================
+;;; System Initialization
+;;; ============================================================================
+
+(defun initialize-nodes-system ()
+  "Initialize the nodes system.
+
+  Returns:
+    T"
+  (initialize-node-manager)
+  (log-info "Nodes system initialized")
+  t)
+
+(defun start-local-node ()
+  "Start the local node.
+
+  Returns:
+    Local node instance"
+  (let ((local-node (make-node "local" :local :name "local")))
+    (node-register local-node)
+    (log-info "Started local node: ~A" (node-id local-node))
+    local-node))

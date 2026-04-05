@@ -6,7 +6,6 @@
 (defpackage #:lisp-claw.config.loader
   (:nicknames #:lc.config.loader)
   (:use #:cl
-        #:alexandria
         #:lisp-claw.utils.json
         #:lisp-claw.utils.helpers
         #:lisp-claw.utils.logging)
@@ -43,7 +42,7 @@
     (:gateway . ((:port . 18789)
                  (:bind . "127.0.0.1")
                  (:auth . ((:mode . "token")
-                           (:token . nil))
+                           (:token . nil)))
                  (:tailscale . ((:mode . "off")))))
     (:channels . ((:whatsapp . ((:enabled . nil)))
                   (:telegram . ((:enabled . nil)
@@ -247,7 +246,7 @@
            (cons (cons key (set-nested-value (cdr existing) value rest-keys))
                  (remove-if (lambda (pair)
                               (equal (car pair) key))
-                            config)))
+                            config))
            ;; Key doesn't exist, create it
            (cons (cons key (set-nested-value '() value rest-keys))
                  config))))))

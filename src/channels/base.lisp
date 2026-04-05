@@ -95,15 +95,6 @@
 ;;; ============================================================================
 
 (defgeneric channel-connect (channel)
-  "Connect the channel.
-
-  Args:
-    CHANNEL: Channel instance
-
-  Returns:
-    T on success, NIL on failure
-
-  Note: Subclasses must implement this method."
   (:method ((channel channel))
     (declare (ignore channel))
     (error 'channel-unsupported-error
@@ -111,45 +102,20 @@
            :message "channel-connect not implemented")))
 
 (defgeneric channel-disconnect (channel)
-  "Disconnect the channel.
-
-  Args:
-    CHANNEL: Channel instance
-
-  Returns:
-    T on success"
   (:method ((channel channel))
     (setf (channel-connected-p channel) nil)
     (setf (channel-status channel) :disconnected)
     (log-info "Channel disconnected: ~A" (channel-name channel))
     t))
 
-(defgeneric channel-send-message (channel recipient message &key options)
-  "Send a message through the channel.
-
-  Args:
-    CHANNEL: Channel instance
-    RECIPIENT: Message recipient (channel-specific format)
-    MESSAGE: Message content (string or structured)
-    OPTIONS: Optional sending options
-
-  Returns:
-    Message ID on success, NIL on failure"
-  (:method ((channel channel) recipient message &key options)
-    (declare (ignore recipient message options))
+(defgeneric channel-send-message (channel recipient message &rest args &key &allow-other-keys)
+  (:method ((channel channel) recipient message &rest args &key &allow-other-keys)
+    (declare (ignore recipient message args))
     (error 'channel-unsupported-error
            :operation 'send-message
            :message "channel-send-message not implemented")))
 
 (defgeneric channel-receive-message (channel &key timeout)
-  "Receive a message from the channel.
-
-  Args:
-    CHANNEL: Channel instance
-    TIMEOUT: Optional timeout in seconds
-
-  Returns:
-    Message object or NIL"
   (:method ((channel channel) &key timeout)
     (declare (ignore timeout))
     (error 'channel-unsupported-error
@@ -157,14 +123,6 @@
            :message "channel-receive-message not implemented")))
 
 (defgeneric channel-get-group-info (channel group-id)
-  "Get information about a group.
-
-  Args:
-    CHANNEL: Channel instance
-    GROUP-ID: Group identifier
-
-  Returns:
-    Group info alist"
   (:method ((channel channel) group-id)
     (declare (ignore group-id))
     (error 'channel-unsupported-error
@@ -172,14 +130,6 @@
            :message "channel-get-group-info not implemented")))
 
 (defgeneric channel-get-user-info (channel user-id)
-  "Get information about a user.
-
-  Args:
-    CHANNEL: Channel instance
-    USER-ID: User identifier
-
-  Returns:
-    User info alist"
   (:method ((channel channel) user-id)
     (declare (ignore user-id))
     (error 'channel-unsupported-error

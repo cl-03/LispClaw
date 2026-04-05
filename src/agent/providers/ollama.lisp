@@ -5,13 +5,12 @@
 (defpackage #:lisp-claw.agent.providers.ollama
   (:nicknames #:lc.agent.providers.ollama)
   (:use #:cl
-        #:alexandria
         #:bordeaux-threads
         #:lisp-claw.utils.logging
         #:lisp-claw.utils.json
         #:lisp-claw.utils.helpers
-        #:lisp-claw.agent.providers.base
-        #:dexador)
+        #:lisp-claw.agent.providers.base)
+  (:shadowing-import-from #:dexador #:request #:post #:get)
   (:export
    #:ollama-call
    #:ollama-stream
@@ -55,23 +54,19 @@
         (let* ((response (dex:post url
                                    :headers '(("Content-Type" . "application/json"))
                                    :content (stringify-json body)
-                                   :timeout *ollama-timeout*))
+                                   :read-timeout *ollama-timeout*
+                                   :connect-timeout 30))
                (json (parse-json response)))
           (log-debug "Ollama API response received")
           (extract-ollama-content json))
 
-      (dex:timeout ()
-        (error 'provider-error
-               :provider "ollama"
-               :message "Request timeout (model may be loading)"))
+      (dexador.error:http-request-failed (e)
+        (handle-ollama-error e))
 
-      (dex:connection-error ()
+      (dexador.error:http-request-unauthorized (e)
         (error 'provider-error
                :provider "ollama"
                :message "Cannot connect to Ollama. Is it running on localhost:11434?"))
-
-      (dex:http-condition (e)
-        (handle-ollama-error e))
 
       (error (e)
         (log-error "Ollama API error: ~A" e)
@@ -183,13 +178,13 @@
 
   Returns:
     Signals appropriate provider error"
-  (let ((status (dex:http-condition-status condition))
-        (body (dex:http-condition-body condition)))
+  (let ((status (dexador.error:response-status condition))
+        (headers (dexador.error:response-headers condition)))
     (cond
       ((= status 404)
        (error 'provider-error
               :provider "ollama"
-              :message (format nil "Model not found: ~A" body)))
+              :message "Model not found"))
 
       ((>= status 500)
        (error 'provider-error
@@ -199,7 +194,7 @@
       (t
        (error 'provider-error
               :provider "ollama"
-              :message (format nil "HTTP error ~A: ~A" status body))))))
+              :message (format nil "HTTP error ~A" status))))))
 
 ;;; ============================================================================
 ;;; Model Management
@@ -212,7 +207,7 @@
     List of model names"
   (handler-case
       (let* ((url (format nil "~A/api/tags" *ollama-base-url*))
-             (response (dex:get url :timeout 10))
+             (response (dex:get url :read-timeout 10 :connect-timeout 5))
              (json (parse-json response))
              (models (cdr (assoc :models json))))
         (loop for model in models
@@ -239,13 +234,13 @@
         (let ((response (dex:post url
                                   :headers '(("Content-Type" . "application/json"))
                                   :content (stringify-json body)
-                                  :timeout nil))) ; No timeout for large downloads
+                                  :read-timeout nil))) ; No timeout for large downloads
           (declare (ignore response))
           (log-info "Model pulled successfully: ~A" model-name)
-          t))
-    (error (e)
-      (log-error "Failed to pull model: ~A" e)
-      nil))))
+          t)
+      (error (e)
+        (log-error "Failed to pull model: ~A" e)
+        nil))))
 
 (defun ollama-check-running-p ()
   "Check if Ollama is running.
@@ -254,7 +249,7 @@
     T if running, NIL otherwise"
   (handler-case
       (let ((url (format nil "~A/api/tags" *ollama-base-url*)))
-        (dex:get url :timeout 5)
+        (dex:get url :read-timeout 5 :connect-timeout 2)
         t)
     (error ()
       nil)))

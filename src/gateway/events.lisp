@@ -47,7 +47,7 @@
 ;;; Event Types
 ;;; ============================================================================
 
-(defconstant +event-types+
+(defparameter +event-types+
   '(;; Agent events
     "agent"
     "agent.start"

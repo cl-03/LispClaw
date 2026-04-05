@@ -5,13 +5,12 @@
 (defpackage #:lisp-claw.agent.providers.openai
   (:nicknames #:lc.agent.providers.openai)
   (:use #:cl
-        #:alexandria
         #:bordeaux-threads
         #:lisp-claw.utils.logging
         #:lisp-claw.utils.json
         #:lisp-claw.utils.helpers
-        #:lisp-claw.agent.providers.base
-        #:dexador)
+        #:lisp-claw.agent.providers.base)
+  (:shadowing-import-from #:dexador #:request #:post #:get)
   (:export
    #:openai-call
    #:openai-stream
@@ -60,17 +59,13 @@
                                      :headers `(("Content-Type" . "application/json")
                                                 ("Authorization" . ,(format nil "Bearer ~A" api-key)))
                                      :content (stringify-json body)
-                                     :timeout *openai-timeout*))
+                                     :read-timeout *openai-timeout*
+                                     :connect-timeout 30))
                  (json (parse-json response)))
             (log-debug "OpenAI API response received")
             (extract-openai-content json))
 
-        (dex:timeout ()
-          (error 'provider-error
-                 :provider "openai"
-                 :message "Request timeout"))
-
-        (dex:http-condition (e)
+        (dexador.error:http-request-failed (e)
           (handle-openai-error e))
 
         (error (e)
@@ -189,8 +184,8 @@
 
   Returns:
     Signals appropriate provider error"
-  (let ((status (dex:http-condition-status condition))
-        (body (dex:http-condition-body condition)))
+  (let ((status (dexador.error:response-status condition))
+        (headers (dexador.error:response-headers condition)))
     (cond
       ((= status 401)
        (error 'provider-auth-error
@@ -211,7 +206,7 @@
       (t
        (error 'provider-error
               :provider "openai"
-              :message (format nil "HTTP error ~A: ~A" status body))))))
+              :message (format nil "HTTP error ~A" status))))))
 
 ;;; ============================================================================
 ;;; Provider Registration

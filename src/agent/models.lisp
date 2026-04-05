@@ -106,7 +106,8 @@
     '(:base-url "https://generativelanguage.googleapis.com/v1beta"
       :auth-type :api-key
       :env-var "GOOGLE_API_KEY"
-      :models ("gemini-2.0-flash" "gemini-2.0-pro")))
+      :models ("gemini-2.0-flash" "gemini-2.0-pro"
+               "gemini-1.5-pro" "gemini-1.5-flash")))
 
   ;; Ollama (local)
   (register-provider "ollama"
@@ -119,14 +120,16 @@
     '(:base-url "https://api.groq.com/openai/v1"
       :auth-type :api-key
       :env-var "GROQ_API_KEY"
-      :models ("llama-3.3-70b-versatile" "mixtral-8x7b-32768")))
+      :models ("llama-3.3-70b-versatile" "mixtral-8x7b-32768"
+               "llama-3.1-70b-versatile" "llama-3.1-8b-instant"
+               "gemma2-9b-it")))
 
   ;; xAI
   (register-provider "xai"
     '(:base-url "https://api.x.ai/v1"
       :auth-type :api-key
       :env-var "XAI_API_KEY"
-      :models ("grok-2" "grok-2-mini")))
+      :models ("grok-2" "grok-beta" "grok-vision")))
 
   (log-info "Registered ~A built-in providers"
             (hash-table-count *model-providers*))
@@ -217,9 +220,9 @@
                           :name ,model-name
                           :base-url ,(plist-get provider-config :base-url)
                           :auth-type ,(plist-get provider-config :auth-type)
-                          :unknown . t))))
-            (setf (gethash model-string *model-cache*) info)
-            info))))))
+                          :unknown . t)))
+              (setf (gethash model-string *model-cache*) info)
+              info))))))
 
 (defun validate-model (model-string)
   "Validate a model identifier.

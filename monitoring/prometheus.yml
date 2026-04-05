@@ -1,0 +1,98 @@
+# Prometheus Configuration for Lisp-Claw
+# Scrapes metrics from Lisp-Claw and related services
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'lisp-claw'
+    environment: 'production'
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# Rule files (optional)
+rule_files:
+  - "alerts.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Lisp-Claw metrics
+  - job_name: 'lisp-claw'
+    static_configs:
+      - targets: ['lisp-claw:9090']
+        labels:
+          application: 'lisp-claw'
+          component: 'gateway'
+    scrape_interval: 10s
+    metrics_path: /metrics
+
+  # Lisp-Claw Gateway health
+  - job_name: 'lisp-claw-health'
+    static_configs:
+      - targets: ['lisp-claw:18789']
+        labels:
+          application: 'lisp-claw'
+          component: 'gateway'
+    scrape_interval: 30s
+    metrics_path: /health
+    metrics_path: /metrics
+
+  # Redis metrics (if using Redis exporter)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          application: 'redis'
+    scrape_interval: 15s
+
+  # ChromaDB metrics (if available)
+  - job_name: 'chromadb'
+    static_configs:
+      - targets: ['chromadb:8000']
+        labels:
+          application: 'chromadb'
+    scrape_interval: 30s
+
+  # Node Exporter for system metrics
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          application: 'node-exporter'
+    scrape_interval: 15s
+
+  # Kubernetes service discovery (if running on K8s)
+  # - job_name: 'kubernetes-pods'
+  #   kubernetes_sd_configs:
+  #     - role: pod
+  #   relabel_configs:
+  #     - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+  #       action: keep
+  #       regex: true
+  #     - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+  #       action: replace
+  #       target_label: __metrics_path__
+  #       regex: (.+)
+  #     - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+  #       action: replace
+  #       regex: ([^:]+)(?::\d+)?;(\d+)
+  #       replacement: $1:$2
+  #       target_label: __address__
+
+  # Kubernetes service discovery for services
+  # - job_name: 'kubernetes-services'
+  #   kubernetes_sd_configs:
+  #     - role: service
+  #   relabel_configs:
+  #     - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+  #       action: keep
+  #       regex: true
+  #     - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+  #       action: replace
+  #       target_label: __metrics_path__
+  #       regex: (.+)

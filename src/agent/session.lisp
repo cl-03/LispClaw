@@ -5,7 +5,6 @@
 (defpackage #:lisp-claw.agent.session
   (:nicknames #:lc.agent.session)
   (:use #:cl
-        #:alexandria
         #:bordeaux-threads
         #:lisp-claw.utils.logging
         #:lisp-claw.utils.helpers
@@ -166,19 +165,19 @@
 
   Returns:
     Agent session or NIL"
-  (let ((session (gethash session-id *session-store*)))
-    (when session
-      ;; Check expiration
-      (if (session-expired-p session)
-          (progn
-            (remhash session-id *session-store*)
-            (log-debug "Session expired and removed: ~A" session-id)
-            nil)
-          ;; Update last accessed
-          (progn
-            (setf (session-last-accessed session) (get-universal-time))
-            session))))
-    session))
+  (bt:with-lock-held (*session-lock*)
+    (let ((session (gethash session-id *session-store*)))
+      (when session
+        ;; Check expiration
+        (if (session-expired-p session)
+            (progn
+              (remhash session-id *session-store*)
+              (log-debug "Session expired and removed: ~A" session-id)
+              nil)
+            ;; Update last accessed
+            (progn
+              (setf (session-last-accessed session) (get-universal-time))
+              session))))))
 
 (defun destroy-session (session-id)
   "Destroy a session.
@@ -276,7 +275,7 @@
                          (loop for msg in history
                                collect (format nil "[~A] ~A"
                                                (plist-get msg :role)
-                                               (plist-get msg :content))))))))))
+                                               (plist-get msg :content)))))))))
 
 (defun session-clear-history (session-id)
   "Clear session message history.

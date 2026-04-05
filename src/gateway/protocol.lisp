@@ -39,15 +39,14 @@
    #:event-node
 
    ;; Frame creation
-   #:make-request-frame
-   #:make-response-frame
-   #:make-event-frame
+   #:make-request-frame*
+   #:make-response-frame*
+   #:make-event-frame*
    #:make-connect-frame
 
    ;; Frame parsing
    #:parse-frame
    #:validate-frame
-   #:frame-p
 
    ;; Protocol errors
    #:protocol-error
@@ -60,76 +59,76 @@
 ;;; Protocol Constants
 ;;; ============================================================================
 
-(defconstant +protocol-version+ "1.0"
+(defparameter +protocol-version+ "1.0"
   "Protocol version string.")
 
 (defvar *protocol-version* +protocol-version+
   "Current protocol version.")
 
 ;;; Frame type keywords
-(defconstant +frame-type-request+ :req
-  "Request frame type.")
+(defparameter +frame-type-request+ :req
+  "Frame type for requests.")
 
-(defconstant +frame-type-response+ :res
-  "Response frame type.")
+(defparameter +frame-type-response+ :res
+  "Frame type for responses.")
 
-(defconstant +frame-type-event+ :event
-  "Event frame type.")
+(defparameter +frame-type-event+ :event
+  "Frame type for events.")
 
-(defconstant +frame-type-connect+ :connect
-  "Connect frame (special request).")
+(defparameter +frame-type-connect+ :connect
+  "Frame type for connect.")
 
 ;;; ============================================================================
 ;;; Request Methods
 ;;; ============================================================================
 
-(defconstant +method-connect+ "connect"
+(defparameter +method-connect+ "connect"
   "Initial connection handshake method.")
 
-(defconstant +method-health+ "health"
+(defparameter +method-health+ "health"
   "Health check method.")
 
-(defconstant +method-agent+ "agent"
+(defparameter +method-agent+ "agent"
   "Agent invocation method.")
 
-(defconstant +method-send+ "send"
+(defparameter +method-send+ "send"
   "Message send method.")
 
-(defconstant +method-node-invoke+ "node.invoke"
+(defparameter +method-node-invoke+ "node.invoke"
   "Node command invocation method.")
 
-(defconstant +method-sessions-list+ "sessions_list"
+(defparameter +method-sessions-list+ "sessions_list"
   "List sessions method.")
 
-(defconstant +method-sessions-send+ "sessions_send"
+(defparameter +method-sessions-send+ "sessions_send"
   "Send to session method.")
 
-(defconstant +method-devices-list+ "devices_list"
+(defparameter +method-devices-list+ "devices_list"
   "List devices method.")
 
 ;;; ============================================================================
 ;;; Events
 ;;; ============================================================================
 
-(defconstant +event-agent+ "agent"
+(defparameter +event-agent+ "agent"
   "Agent event (streaming responses).")
 
-(defconstant +event-chat+ "chat"
+(defparameter +event-chat+ "chat"
   "Chat message event.")
 
-(defconstant +event-presence+ "presence"
+(defparameter +event-presence+ "presence"
   "Presence update event.")
 
-(defconstant +event-health+ "health"
+(defparameter +event-health+ "health"
   "Health status event.")
 
-(defconstant +event-heartbeat+ "heartbeat"
+(defparameter +event-heartbeat+ "heartbeat"
   "Heartbeat event.")
 
-(defconstant +event-cron+ "cron"
+(defparameter +event-cron+ "cron"
   "Cron trigger event.")
 
-(defconstant +event-node+ "node"
+(defparameter +event-node+ "node"
   "Node event.")
 
 ;;; ============================================================================
@@ -164,7 +163,7 @@
 ;;; Frame Creation
 ;;; ============================================================================
 
-(defun make-request-frame (method &key id params)
+(defun make-request-frame* (method &key id params)
   "Create a request frame.
 
   Args:
@@ -181,11 +180,11 @@
    :method method
    :params params))
 
-(defun make-response-frame (request-id ok &key payload error)
+(defun make-response-frame* (id ok &key payload error)
   "Create a response frame.
 
   Args:
-    REQUEST-ID: ID of the request being responded to
+    ID: Response ID
     OK: Boolean indicating success
     PAYLOAD: Response payload (if successful)
     ERROR: Error message (if failed)
@@ -194,13 +193,13 @@
     Response frame structure"
   (make-response-frame
    :type :res
-   :id request-id
+   :id id
    :timestamp (get-universal-time)
    :ok ok
    :payload payload
    :error error))
 
-(defun make-event-frame (event &key payload seq state-version)
+(defun make-event-frame* (event &key payload seq state-version timestamp)
   "Create an event frame.
 
   Args:
@@ -208,17 +207,17 @@
     PAYLOAD: Event payload
     SEQ: Optional sequence number
     STATE-VERSION: Optional state version
+    TIMESTAMP: Optional timestamp
 
   Returns:
     Event frame structure"
   (make-event-frame
-   :type :event
-   :id nil
-   :timestamp (get-universal-time)
    :event event
    :payload payload
    :seq seq
-   :state-version state-version))
+   :state-version state-version
+   :type :event
+   :timestamp (or timestamp (get-universal-time))))
 
 (defun make-connect-frame (client-info &key auth)
   "Create a connect frame.
@@ -229,7 +228,7 @@
 
   Returns:
     Connect request frame"
-  (make-request-frame
+  (make-request-frame*
    +method-connect+
    :params (append '((:type . "client")
                      (:version . "1.0"))
@@ -261,14 +260,18 @@
       ;; Request frame
       ((and (equal type "req") method)
        (make-request-frame
-        :method method
+        :type :req
         :id id
+        :timestamp (get-universal-time)
+        :method method
         :params (json-get json-object :params)))
 
       ;; Response frame
       ((equal type "res")
        (make-response-frame
-        :request-id id
+        :type :res
+        :id id
+        :timestamp (get-universal-time)
         :ok (json-get json-object :ok)
         :payload (or payload (json-get json-object :result))
         :error (json-get json-object :error)))
@@ -276,6 +279,9 @@
       ;; Event frame
       ((and (equal type "event") event)
        (make-event-frame
+        :type :event
+        :id id
+        :timestamp (get-universal-time)
         :event event
         :payload payload
         :seq (json-get json-object :seq)
@@ -314,16 +320,6 @@
        (error 'protocol-error :message "Event frame missing event type"))))
 
   t)
-
-(defun frame-p (object)
-  "Check if OBJECT is a frame structure.
-
-  Args:
-    OBJECT: Any object
-
-  Returns:
-    T if object is a frame, NIL otherwise"
-  (typep object 'frame))
 
 ;;; ============================================================================
 ;;; Frame Serialization

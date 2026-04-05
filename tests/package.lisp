@@ -5,8 +5,11 @@
 (defpackage #:lisp-claw-tests
   (:nicknames #:lc-tests)
   (:use #:cl
-        #:prove
-        #:lisp-claw
-        #:lisp-claw.utils.json
-        #:lisp-claw.utils.helpers
-        #:lisp-claw.gateway.protocol))
+        #:prove)
+  (:export
+   #:test-gateway
+   #:test-protocol
+   #:test-tools
+   #:test-channels
+   #:test-automation
+   #:run-all-tests))

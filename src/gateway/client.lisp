@@ -6,7 +6,6 @@
 (defpackage #:lisp-claw.gateway.client
   (:nicknames #:lc.gateway.client)
   (:use #:cl
-        #:alexandria
         #:bordeaux-threads
         #:lisp-claw.utils.logging
         #:lisp-claw.utils.helpers

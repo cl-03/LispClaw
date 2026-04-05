@@ -1,59 +1,225 @@
+# Docker Compose for Lisp-Claw
+# Provides complete stack with dependencies and optional services
+
+version: '3.8'
+
 services:
-  lisp-claw-gateway:
-    image: ${LISP_CLAW_IMAGE:-lisp-claw:local}
-    environment:
-      HOME: /home/lisp-claw
-      TERM: xterm-256color
-      LISP_CLAW_GATEWAY_TOKEN: ${LISP_CLAW_GATEWAY_TOKEN:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      TZ: ${LISP_CLAW_TZ:-UTC}
-    volumes:
-      - ${LISP_CLAW_CONFIG_DIR:-~/.lisp-claw}:/home/lisp-claw/.lisp-claw
-      - ${LISP_CLAW_WORKSPACE_DIR:-~/.lisp-claw/workspace}:/home/lisp-claw/workspace
-    ports:
-      - "${LISP_CLAW_GATEWAY_PORT:-18789}:18789"
-    init: true
+  # ==============================================================================
+  # Lisp-Claw Main Application
+  # ==============================================================================
+  lisp-claw:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lisp-claw:latest
+    container_name: lisp-claw
     restart: unless-stopped
+    ports:
+      - "18789:18789"  # Gateway WebSocket
+      - "18790:18790"  # Control UI
+    environment:
+      - LISP_CLAW_CONFIG=/app/config/config.json
+      - LISP_CLAW_LOG_LEVEL=info
+      - LISP_CLAW_DATA_DIR=/app/data
+      # AI Provider Configuration
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
+      # Database Configuration
+      - DATABASE_URL=sqlite:///app/data/lisp-claw.db
+      # Vector Database (optional)
+      - CHROMA_HOST=${CHROMA_HOST:-chromadb}
+      - CHROMA_PORT=8000
+      # Redis for caching (optional)
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=6379
+    volumes:
+      - ./config:/app/config:ro
+      - lisp-claw-data:/app/data
+      - lisp-claw-logs:/app/logs
+      - lisp-claw-plugins:/app/plugins
+      - lisp-claw-vectors:/app/vector-store
+    depends_on:
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    networks:
+      - lisp-claw-network
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18789/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:18789/health"]
       interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ==============================================================================
+  # Redis - Caching and Session Storage
+  # ==============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: lisp-claw-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - lisp-claw-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
-    # Optional: Resource limits
-    # deploy:
-    #   resources:
-    #     limits:
-    #       memory: 1G
-    #     reservations:
-    #       memory: 512M
-    # Optional: Logging configuration
-    # logging:
-    #   driver: "json-file"
-    #   options:
-    #     max-size: "10m"
-    #     max-file: "3"
 
-  lisp-claw-repl:
-    image: ${LISP_CLAW_IMAGE:-lisp-claw:local}
-    network_mode: "service:lisp-claw-gateway"
-    environment:
-      HOME: /home/lisp-claw
-      TERM: xterm-256color
-      LISP_CLAW_GATEWAY_TOKEN: ${LISP_CLAW_GATEWAY_TOKEN:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      TZ: ${LISP_CLAW_TZ:-UTC}
+  # ==============================================================================
+  # ChromaDB - Vector Database for RAG and Memory
+  # ==============================================================================
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: lisp-claw-chromadb
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
     volumes:
-      - ${LISP_CLAW_CONFIG_DIR:-~/.lisp-claw}:/home/lisp-claw/.lisp-claw
-      - ${LISP_CLAW_WORKSPACE_DIR:-~/.lisp-claw/workspace}:/home/lisp-claw/workspace
-    stdin_open: true
-    tty: true
-    init: true
-    entrypoint: ["sbcl", "--load", "/home/lisp-claw/quicklisp/setup.lisp"]
-    depends_on:
-      - lisp-claw-gateway
-    # Optional: Profile for development
-    # profiles:
-    #   - dev
+      - chroma-data:/chroma/chroma
+    environment:
+      - CHROMA_DB_IMPL=duckdb+parquet
+      - CHROMA_WORKSPACE_DIRECTORY=/chroma/chroma
+    networks:
+      - lisp-claw-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ==============================================================================
+  # Ollama - Local LLM (optional, uncomment to use)
+  # ==============================================================================
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: lisp-claw-ollama
+  #   restart: unless-stopped
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   networks:
+  #     - lisp-claw-network
+  #   profiles:
+  #     - local-ai
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+
+  # ==============================================================================
+  # Prometheus - Monitoring (optional)
+  # ==============================================================================
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: lisp-claw-prometheus
+  #   restart: unless-stopped
+  #   ports:
+  #     - "127.0.0.1:9090:9090"
+  #   volumes:
+  #     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  #     - prometheus-data:/prometheus
+  #   command:
+  #     - '--config.file=/etc/prometheus/prometheus.yml'
+  #     - '--storage.tsdb.path=/prometheus'
+  #   networks:
+  #     - lisp-claw-network
+  #   profiles:
+  #     - monitoring
+
+  # ==============================================================================
+  # Grafana - Dashboards (optional)
+  # ==============================================================================
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: lisp-claw-grafana
+  #   restart: unless-stopped
+  #   ports:
+  #     - "127.0.0.1:3000:3000"
+  #   volumes:
+  #     - grafana-data:/var/lib/grafana
+  #     - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+  #   environment:
+  #     - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+  #     - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+  #   networks:
+  #     - lisp-claw-network
+  #   depends_on:
+  #     - prometheus
+  #   profiles:
+  #     - monitoring
+
+  # ==============================================================================
+  # Nginx - Reverse Proxy (optional, for production)
+  # ==============================================================================
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: lisp-claw-nginx
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./nginx/ssl:/etc/nginx/ssl:ro
+  #     - nginx-logs:/var/log/nginx
+  #   networks:
+  #     - lisp-claw-network
+  #   depends_on:
+  #     - lisp-claw
+  #   profiles:
+  #     - production
+
+# ==============================================================================
+# Networks
+# ==============================================================================
+networks:
+  lisp-claw-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# ==============================================================================
+# Volumes
+# ==============================================================================
+volumes:
+  lisp-claw-data:
+    driver: local
+  lisp-claw-logs:
+    driver: local
+  lisp-claw-plugins:
+    driver: local
+  lisp-claw-vectors:
+    driver: local
+  redis-data:
+    driver: local
+  chroma-data:
+    driver: local
+  # ollama-data:
+  #   driver: local
+  # prometheus-data:
+  #   driver: local
+  # grafana-data:
+  #   driver: local
+  # nginx-logs:
+  #   driver: local

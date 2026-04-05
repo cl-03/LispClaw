@@ -5,13 +5,12 @@
 (defpackage #:lisp-claw.agent.providers.anthropic
   (:nicknames #:lc.agent.providers.anthropic)
   (:use #:cl
-        #:alexandria
         #:bordeaux-threads
         #:lisp-claw.utils.logging
         #:lisp-claw.utils.json
         #:lisp-claw.utils.helpers
-        #:lisp-claw.agent.providers.base
-        #:dexador)
+        #:lisp-claw.agent.providers.base)
+  (:shadowing-import-from #:dexador #:request #:post #:get)
   (:export
    #:anthropic-call
    #:anthropic-stream
@@ -65,19 +64,26 @@
                                                 ("x-api-key" . ,api-key)
                                                 ("anthropic-version" . ,*anthropic-api-version*))
                                      :content (stringify-json body)
-                                     :timeout *anthropic-timeout*))
+                                     :read-timeout *anthropic-timeout*
+                                     :connect-timeout 30))
                  (json (parse-json response)))
             (log-debug "Anthropic API response received")
             (validate-anthropic-response json)
             (extract-anthropic-content json))
 
-        (dex:timeout ()
-          (error 'provider-error
-                 :provider "anthropic"
-                 :message "Request timeout"))
-
-        (dex:http-condition (e)
+        (dexador.error:http-request-failed (e)
           (handle-anthropic-error e))
+
+        (dexador.error:http-request-unauthorized (e)
+          (error 'provider-auth-error
+                 :provider "anthropic"
+                 :message "Invalid API key"))
+
+        (dexador.error:http-request-too-many-requests (e)
+          (error 'provider-rate-limit-error
+                 :provider "anthropic"
+                 :retry-after 60
+                 :message "Rate limit exceeded"))
 
         (error (e)
           (log-error "Anthropic API error: ~A" e)
@@ -243,12 +249,12 @@
   "Handle Anthropic API errors.
 
   Args:
-    CONDITION: HTTP condition error
+    CONDITION: HTTP request failed error
 
   Returns:
     Signals appropriate provider error"
-  (let ((status (dex:http-condition-status condition))
-        (body (dex:http-condition-body condition)))
+  (let ((status (dexador.error:response-status condition))
+        (headers (dexador.error:response-headers condition)))
     (cond
       ((= status 401)
        (error 'provider-auth-error
@@ -256,10 +262,11 @@
               :message "Invalid API key"))
 
       ((= status 429)
-       (error 'provider-rate-limit-error
-              :provider "anthropic"
-              :retry-after (or (parse-rate-limit-retry body) 60)
-              :message "Rate limit exceeded"))
+       (let ((retry-after (or (parse-headers-retry-after headers) 60)))
+         (error 'provider-rate-limit-error
+                :provider "anthropic"
+                :retry-after retry-after
+                :message "Rate limit exceeded")))
 
       ((>= status 500)
        (error 'provider-error
@@ -269,20 +276,19 @@
       (t
        (error 'provider-error
               :provider "anthropic"
-              :message (format nil "HTTP error ~A: ~A" status body))))))
+              :message (format nil "HTTP error ~A" status))))))
 
-(defun parse-rate-limit-retry (body)
-  "Parse retry-after from rate limit response.
+(defun parse-headers-retry-after (headers)
+  "Parse Retry-After from headers.
 
   Args:
-    BODY: Response body
+    HEADERS: Response headers
 
   Returns:
     Retry-after seconds or NIL"
-  (let ((json (ignore-errors (parse-json body))))
-    (when json
-      (or (cdr (assoc :retry_after json))
-          60))))
+  (let ((retry (cdr (assoc "retry-after" headers :test #'string=))))
+    (when retry
+      (ignore-errors (parse-integer retry)))))
 
 ;;; ============================================================================
 ;;; Provider Registration

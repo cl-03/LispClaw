@@ -17,7 +17,10 @@
    #:get-thread-count
    #:get-uptime
    #:health-check
-   #:run-health-checks))
+   #:run-health-checks
+   ;; Initialization
+   #:initialize-health
+   #:register-built-in-checks))
 
 (in-package #:lisp-claw.gateway.health)
 
@@ -164,8 +167,9 @@
                (push (cons name
                            (list :ok (plist-get check :last-result)
                                  :message (plist-get check :last-message)
-                                 :last-run (plist-get check :last-run))))
+                                 :last-run (plist-get check :last-run)))
                      results))
+             *health-checks*)
     (nreverse results)))
 
 (defun get-check-result (name)
@@ -239,8 +243,12 @@
   ;; Common Lisp doesn't have standard memory info
   ;; This would need implementation-specific code
   #+sbcl
-  (let ((room-info (sb-ext:room-stats)))
-    (plist-get room-info :live-bytes))
+  (let ((total-bytes 0))
+    (declare (ignore total-bytes))
+    ;; Use room to get memory statistics - just return nil for now
+    ;; as parsing room output is complex
+    (room)
+    nil)
   #+ccl
   (ccl:free-heap-size)
   #-(or sbcl ccl)
@@ -251,7 +259,7 @@
 
   Returns:
     Number of threads"
-  (length (bt:list-all-threads)))
+  (length (bt:all-threads)))
 
 (defun get-uptime ()
   "Get gateway uptime in seconds.

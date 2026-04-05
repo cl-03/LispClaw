@@ -9,67 +9,53 @@
         #:alexandria
         #:serapeum
         #:bordeaux-threads)
-  ;; Export main classes
   (:export
    ;; Gateway classes
    #:gateway
    #:gateway-config
    #:client-connection
    #:node-connection
-
    ;; Channel classes
    #:channel
    #:channel-registry
-
    ;; Agent classes
    #:agent-session
    #:agent-config
    #:model-provider
-
-   ;; Node classes
-   #:node-manager
-   #:device-node
-
    ;; Main functions
    #:make-gateway
    #:start-gateway
    #:stop-gateway
    #:gateway-run
-
    ;; Config functions
    #:load-config
    #:save-config
    #:get-config
    #:set-config
-
    ;; Channel functions
    #:register-channel
    #:unregister-channel
    #:send-message
    #:broadcast-message
-
    ;; Agent functions
    #:create-session
    #:destroy-session
    #:send-to-agent
    #:get-session-history
-
    ;; Node functions
    #:register-node
    #:invoke-node
-
    ;; Events
    #:subscribe-event
    #:unsubscribe-event
    #:emit-event
-
    ;; Conditions
    #:lisp-claw-error
    #:gateway-error
    #:channel-error
    #:agent-error
    #:config-error
-   #:auth-error)
+   #:auth-error))
 
 ;;; ============================================================================
 ;;; Gateway Package
@@ -78,7 +64,6 @@
 (defpackage #:lisp-claw.gateway
   (:nicknames #:lc.gateway)
   (:use #:cl
-        #:lisp-claw
         #:alexandria
         #:bordeaux-threads)
   (:export
@@ -101,19 +86,16 @@
    ;; Protocol constants
    #:protocol-version
    #:frame-types
-
    ;; Frame types
    #:frame-request
    #:frame-response
    #:frame-event
-
    ;; Request methods
    #:method-connect
    #:method-health
    #:method-agent
    #:method-send
    #:method-node-invoke
-
    ;; Events
    #:event-agent
    #:event-chat
@@ -121,7 +103,6 @@
    #:event-health
    #:event-heartbeat
    #:event-cron
-
    ;; Frame parsing
    #:parse-frame
    #:make-frame
@@ -152,7 +133,6 @@
 (defpackage #:lisp-claw.agent
   (:nicknames #:lc.agent)
   (:use #:cl
-        #:lisp-claw
         #:alexandria
         #:bordeaux-threads)
   (:export
@@ -170,7 +150,6 @@
 (defpackage #:lisp-claw.channels
   (:nicknames #:lc.channels)
   (:use #:cl
-        #:lisp-claw
         #:alexandria
         #:bordeaux-threads)
   (:export
@@ -199,18 +178,76 @@
    #:log-info
    #:log-warn
    #:log-error
-
    ;; JSON helpers
    #:parse-json
    #:stringify-json
    #:json-get
-
    ;; Crypto helpers
    #:generate-token
    #:hash-password
    #:verify-signature
-
    ;; Time helpers
    #:now
    #:timestamp
    #:parse-timestamp))
+
+;;; ============================================================================
+;;; Tools Package
+;;; ============================================================================
+
+(defpackage #:lisp-claw.tools
+  (:nicknames #:lc.tools)
+  (:use #:cl
+        #:alexandria
+        #:bordeaux-threads)
+  (:export
+   ;; Tool Registry
+   #:*tool-registry*
+   #:register-tool
+   #:unregister-tool
+   #:get-tool
+   #:list-tools
+   #:execute-tool
+   #:register-all-tools
+   ;; Browser Tool
+   #:*browser-instance*
+   #:make-browser
+   #:browser-start
+   #:browser-stop
+   #:browser-navigate
+   #:browser-screenshot
+   #:browser-click
+   #:browser-type
+   #:browser-evaluate
+   ;; File Tools
+   #:file-read
+   #:file-write
+   #:file-append
+   #:file-delete
+   #:file-exists-p
+   #:file-copy
+   #:file-move
+   #:file-info
+   #:list-directory
+   #:make-directory
+   ;; System Tools
+   #:run-command
+   #:run-command-sync
+   #:run-command-async
+   #:command-exists-p
+   #:get-environment
+   #:set-environment
+   #:enable-sandbox
+   #:disable-sandbox
+   ;; Canvas Tools
+   #:canvas-element
+   #:make-canvas-element
+   #:canvas-render
+   #:canvas-to-html
+   #:canvas-to-markdown
+   #:canvas-send
+   #:canvas-text
+   #:canvas-image
+   #:canvas-code
+   #:canvas-button
+   #:canvas-container))

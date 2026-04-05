@@ -1,0 +1,108 @@
+# Prometheus Alert Rules for Lisp-Claw
+
+groups:
+  - name: lisp-claw-alerts
+    interval: 30s
+    rules:
+      # Service down alert
+      - alert: LispClawDown
+        expr: up{job="lisp-claw"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Lisp-Claw service is down"
+          description: "Lisp-Claw instance {{ $labels.instance }} has been down for more than 1 minute."
+
+      # High error rate
+      - alert: LispClawHighErrorRate
+        expr: rate(lisp_claw_errors_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate in Lisp-Claw"
+          description: "Lisp-Claw is experiencing {{ $value }} errors per second."
+
+      # High request latency
+      - alert: LispClawHighLatency
+        expr: histogram_quantile(0.95, rate(lisp_claw_request_latency_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High request latency in Lisp-Claw"
+          description: "95th percentile request latency is {{ $value }} seconds."
+
+      # High memory usage
+      - alert: LispClawHighMemory
+        expr: lisp_claw_memory_usage_bytes > 1073741824  # 1GB
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage in Lisp-Claw"
+          description: "Lisp-Claw memory usage is {{ $value | humanize }} bytes."
+
+      # Too many active connections
+      - alert: LispClawHighConnections
+        expr: lisp_claw_active_connections > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High number of active connections"
+          description: "Lisp-Claw has {{ $value }} active connections."
+
+      # Message processing backlog
+      - alert: LispClawMessageBacklog
+        expr: rate(lisp_claw_messages_processed_total[5m]) < rate(lisp_claw_messages_received_total[5m])
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Message processing backlog detected"
+          description: "Lisp-Claw is processing messages slower than they are arriving."
+
+  - name: infrastructure-alerts
+    interval: 30s
+    rules:
+      # Redis down
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis instance {{ $labels.instance }} has been down for more than 1 minute."
+
+      # ChromaDB down
+      - alert: ChromaDBDown
+        expr: up{job="chromadb"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ChromaDB is down"
+          description: "ChromaDB instance {{ $labels.instance }} has been down for more than 2 minutes."
+
+      # High CPU usage on node
+      - alert: HighNodeCPU
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on node"
+          description: "CPU usage on {{ $labels.instance }} is above 80%."
+
+      # Low disk space
+      - alert: LowDiskSpace
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100 < 20
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space"
+          description: "Disk space on {{ $labels.instance }} is below 20%."
