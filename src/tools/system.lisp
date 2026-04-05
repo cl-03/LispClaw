@@ -1,6 +1,7 @@
 ;;; tools/system.lisp --- System Command Execution Tool for Lisp-Claw
 ;;;
 ;;; This file implements system command execution with sandboxing support.
+;;; Uses UIOP for maximum Common Lisp implementation portability.
 
 (defpackage #:lisp-claw.tools.system
   (:nicknames #:lc.tools.system)
@@ -8,14 +9,15 @@
         #:alexandria
         #:bordeaux-threads
         #:lisp-claw.utils.logging
-        #:lisp-claw.utils.json)
+        #:lisp-claw.utils.json
+        #:uiop)
   (:export
    #:run-command
    #:run-command-sync
    #:run-command-async
    #:command-exists-p
    #:get-environment
-   #:set-environment
+   #:get-environment-variable
    #:*allowed-commands*
    #:*sandbox-enabled*
    #:enable-sandbox
@@ -85,37 +87,26 @@
     (log-debug "Running command: ~{~A~^ ~}" full-command)
 
     (handler-case
-        (progn
-          ;; Run command using SBCL's run-program
-          #+sbcl
-          (let* ((process (sb-ext:run-program
-                           (first full-command)
-                           (rest full-command)
-                           :output output-stream
-                           :error error-stream
-                           :wait nil))
-                 (exit-code (progn
-                              (sb-ext:process-wait process)
-                              (sb-ext:process-exit-code process))))
-            (let ((stdout (if (eq output :string)
-                              (get-output-stream-string output-stream)
-                              nil))
-                  (stderr (if (eq error-output :string)
-                              (get-output-stream-string error-stream)
-                              nil)))
-              (log-debug "Command completed with exit code: ~A" exit-code)
-              (values exit-code stdout stderr)))
-          ;; Fallback for other implementations
-          #-sbcl
-          (let ((exit-code 0))
-            (let ((stdout (if (eq output :string)
-                              (get-output-stream-string output-stream)
-                              nil))
-                  (stderr (if (eq error-output :string)
-                              (get-output-stream-string error-stream)
-                              nil)))
-              (log-debug "Command completed with exit code: ~A" exit-code)
-              (values exit-code stdout stderr))))
+        ;; Use UIOP's run-program for maximum portability across CL implementations
+        (multiple-value-bind (stdout stderr exit-code)
+            (uiop:run-program full-command
+                              :output output-stream
+                              :error-output error-stream
+                              :directory directory
+                              :env environment
+                              :ignore-error-status t)
+          (let ((output-result (if (eq output :string)
+                                   (if (stringp stdout)
+                                       stdout
+                                       (get-output-stream-string output-stream))
+                                   nil))
+                (error-result (if (eq error-output :string)
+                                  (if (stringp stderr)
+                                      stderr
+                                      (get-output-stream-string error-stream))
+                                  nil)))
+            (log-debug "Command completed with exit code: ~A" exit-code)
+            (values exit-code output-result error-result)))
 
       (error (e)
         (log-error "Command failed: ~A" e)
@@ -212,6 +203,16 @@
 ;;; Environment
 ;;; ============================================================================
 
+(defun get-environment-variable (variable)
+  "Get a single environment variable.
+
+  Args:
+    VARIABLE: Variable name
+
+  Returns:
+    Variable value or NIL"
+  (uiop:getenv variable))
+
 (defun get-environment (&key variable)
   "Get environment variable(s).
 
@@ -221,12 +222,9 @@
   Returns:
     Variable value or full environment alist"
   (if variable
-      #+sbcl (sb-ext:posix-getenv variable)
-      #-sbcl (getenv variable)
+      (uiop:getenv variable)
       (loop for var in '("PATH" "HOME" "USER" "SHELL" "PWD" "LANG")
-            collect (cons var
-                          #+sbcl (sb-ext:posix-getenv var)
-                          #-sbcl (getenv var)))))
+            collect (cons var (uiop:getenv var)))))
 
 (defun set-environment (variable value)
   "Set environment variable.
